@@ -828,6 +828,15 @@ class AnnotateUltrasoundWidget(ScriptedLoadableModuleWidget, VTKObservationMixin
             settings.setValue('AnnotateUltrasound/DepthGuide', "True")
         else:
             settings.setValue('AnnotateUltrasound/DepthGuide', "False")
+
+    def onPleuraPercentageToggled(self, toggled):
+        """
+        Handle toggling the pleura percentage display.
+        """
+        parameterNode = self._parameterNode
+        if parameterNode:
+            parameterNode.pleuraPercentageVisible = toggled
+            self.logic.updatePleuraAnnotationDisplay()
         
     def cleanup(self) -> None:
         """
