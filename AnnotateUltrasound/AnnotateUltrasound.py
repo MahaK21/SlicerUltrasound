@@ -115,6 +115,7 @@ class AnnotateUltrasoundParameterNode:
     pleuraPercentage: float = -1.0
     unsavedChanges: bool = False
     depthGuideVisible: bool = False
+    pleuraPercentageVisible: bool = False
 
 #
 # AnnotateUltrasoundWidget
@@ -223,6 +224,7 @@ class AnnotateUltrasoundWidget(ScriptedLoadableModuleWidget, VTKObservationMixin
         self.ui.previousButton.clicked.connect(self.onPreviousButton)
         self.ui.saveButton.clicked.connect(self.onSaveButton)
         self.ui.intensitySlider.valueChanged.connect(self.onIntensitySliderValueChanged)
+        self.ui.skipToUnlabelledButton.clicked.connect(self.onSkipToUnlabelledButton)
         
         self.ui.addPleuraButton.toggled.connect(lambda checked: self.onAddLine("Pleura", checked))
         self.ui.removePleuraButton.clicked.connect(lambda: self.onRemoveLine("Pleura"))
@@ -232,6 +234,18 @@ class AnnotateUltrasoundWidget(ScriptedLoadableModuleWidget, VTKObservationMixin
         self.ui.clearAllLinesButton.clicked.connect(self.onClearAllLines)
         self.ui.addCurrentFrameButton.clicked.connect(self.onAddCurrentFrame)
         self.ui.removeCurrentFrameButton.clicked.connect(self.onRemoveCurrentFrame)
+
+        # Assign icons to buttons
+        self.ui.nextButton.setIcon(qt.QIcon(self.resourcePath('Icons/blueFillNext.png')))
+        self.ui.previousButton.setIcon(qt.QIcon(self.resourcePath('Icons/blueFillPrevious.png')))
+        self.ui.addPleuraButton.setIcon(qt.QIcon(self.resourcePath('Icons/blueAdd.png')))
+        self.ui.addBlineButton.setIcon(qt.QIcon(self.resourcePath('Icons/blueAdd.png')))
+        self.ui.saveButton.setIcon(qt.QIcon(self.resourcePath('Icons/blueSave.png')))
+        self.ui.removePleuraButton.setIcon(qt.QIcon(self.resourcePath('Icons/blueRemove.png')))
+        self.ui.removeBlineButton.setIcon(qt.QIcon(self.resourcePath('Icons/blueRemove.png')))
+        self.ui.overlayVisibilityButton.setIcon(qt.QIcon(self.resourcePath('Icons/blueEye.png')))
+        self.ui.clearAllLinesButton.setIcon(qt.QIcon(self.resourcePath('Icons/blueFillTrash.png')))
+        self.ui.skipToUnlabelledButton.setIcon(qt.QIcon(self.resourcePath('Icons/blueFastForward.png')))
 
         # Frame table
         self.ui.framesTableWidget.itemSelectionChanged.connect(self.onFramesTableSelectionChanged) 
@@ -246,6 +260,7 @@ class AnnotateUltrasoundWidget(ScriptedLoadableModuleWidget, VTKObservationMixin
         self.ui.autoSaveCheckBox.connect('toggled(bool)', self.saveUserSettings)
         self.ui.showPleuraPercentageCheckBox.connect('toggled(bool)', self.saveUserSettings)
         self.ui.depthGuideCheckBox.toggled.connect(self.onDepthGuideToggled)
+        self.ui.showPleuraPercentageCheckBox.toggled.connect(self.onPleuraPercentageToggled)
 
         # Make buttons taller
         buttonHeight = 40  # Set the height you want for the buttons
@@ -757,6 +772,47 @@ class AnnotateUltrasoundWidget(ScriptedLoadableModuleWidget, VTKObservationMixin
             # Set foreground volume to None
             redSliceCompositeNode = slicer.app.layoutManager().sliceWidget("Red").sliceLogic().GetSliceCompositeNode()
             redSliceCompositeNode.SetForegroundVolumeID(None)
+
+    def onSkipToUnlabelledButton(self):
+        """ 
+        Skip to the next unlabelled scan
+        """
+        if not self.confirmUnsavedChanges():
+            return
+        
+        if self.logic.dicomDf is None:
+            self.ui.statusLabel.setText("Please read input directory first")
+            return
+        
+        # Find the next unlabelled scan
+        nextUnlabelledIndex = self.findNextUnlabelledScan()
+        if nextUnlabelledIndex is None:
+            self.ui.statusLabel.setText("No unlabelled scans found")
+            return
+        
+        self.logic.nextDicomDfIndex = nextUnlabelledIndex
+        self.onNextButton()  # Load the scan at `nextDicomDfIndex`
+
+    def findNextUnlabelledScan(self):
+        """
+        Find the index of the next unlabelled scan in the DICOM dataframe.
+        :return: Index of the next unlabelled scan or None if no such scan is found.
+        """
+        if self.logic.dicomDf is None:
+            return None
+
+        for idx in range(self.logic.nextDicomDfIndex, len(self.logic.dicomDf)):
+            annotationsFilepath = self.logic.dicomDf.iloc[idx]['AnnotationsFilepath']
+            try:
+                with open(annotationsFilepath, 'r') as f:
+                    annotations = json.load(f)
+                    # Check if frame annotations exist and are empty
+                    if 'frame_annotations' not in annotations or not annotations['frame_annotations']:
+                        return idx
+            except Exception as e:
+                logging.error(f"Error reading annotations file {annotationsFilepath}: {e}")
+        
+        return None
 
     def updateZonalOverlay(self):
         # Print the coordinates of all points in all markup nodes
