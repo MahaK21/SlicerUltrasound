@@ -303,8 +303,9 @@ class AnnotateUltrasoundWidget(ScriptedLoadableModuleWidget, VTKObservationMixin
 
     def onClearAllLines(self):
         self.logic.clearAllLines()
-        ratio = self.logic.updateOverlayVolume()
-        self._parameterNode.pleuraPercentage = ratio * 100
+        # ratio = self.logic.updateOverlayVolume()
+        # self._parameterNode.pleuraPercentage = ratio * 100
+        #self.logic.updatePleuraPercentage()
         self._parameterNode.unsavedChanges = True
 
     def onFramesTableSelectionChanged(self):
@@ -345,8 +346,10 @@ class AnnotateUltrasoundWidget(ScriptedLoadableModuleWidget, VTKObservationMixin
             currentFrameIndex = self.logic.sequenceBrowserNode.GetSelectedItemNumber()
             self.logic.removeFrame(currentFrameIndex)
             self.logic.updateLineMarkups()
-            ratio = self.logic.updateOverlayVolume()
-            self._parameterNode.pleuraPercentage = ratio * 100
+            # ratio = self.logic.updateOverlayVolume()
+            # self._parameterNode.pleuraPercentage = ratio * 100
+            self.logic.updatePleuraPercentage()
+            self.logic.updateOverlayVolume()
             self.updateGuiFromAnnotations()
 
     def onInputDirectorySelected(self):
@@ -541,6 +544,9 @@ class AnnotateUltrasoundWidget(ScriptedLoadableModuleWidget, VTKObservationMixin
         # Create a dialog to ask the user to wait while the next sequence is loaded.
         waitDialog = self.createWaitDialog("Loading previous sequence", "Loading previous sequence...")
         
+        # Saving settings
+        showDepthGuide = self._parameterNode.depthGuideVisible
+
         currentDicomDfIndex = self.logic.loadPreviousSequence()
         
         # Update self.ui.currentFileLabel using the DICOM file name
@@ -552,6 +558,9 @@ class AnnotateUltrasoundWidget(ScriptedLoadableModuleWidget, VTKObservationMixin
 
         self.ui.intensitySlider.setValue(0)
         
+        # Restore settings
+        self._parameterNode.depthGuideVisible = showDepthGuide
+
         # Close the wait dialog
         waitDialog.close()
         
@@ -636,8 +645,11 @@ class AnnotateUltrasoundWidget(ScriptedLoadableModuleWidget, VTKObservationMixin
                 if currentLine.GetNumberOfControlPoints() < 2:
                     linesList.pop()
                     slicer.mrmlScene.RemoveNode(currentLine)
-            ratio = self.logic.updateOverlayVolume()
-            self._parameterNode.pleuraPercentage = ratio * 100
+            # ratio = self.logic.updateOverlayVolume()
+            # self._parameterNode.pleuraPercentage = ratio * 100
+            #self._parameterNode.unsavedChanges = True # not sure if this is necessary
+            self.logic.updatePleuraPercentage()
+            self.logic.updateOverlayVolume()   # not sure if this is necessary 
             return
         
         # Put interaction model to place line markup
@@ -825,9 +837,9 @@ class AnnotateUltrasoundWidget(ScriptedLoadableModuleWidget, VTKObservationMixin
         # Save new state in application settings
         settings = slicer.app.settings()
         if toggled:
-            settings.setValue('AnnotateUltrasound/DepthGuide', "True")
+            settings.setValue('AnnotateUltrasound/DepthGuide', "true")
         else:
-            settings.setValue('AnnotateUltrasound/DepthGuide', "False")
+            settings.setValue('AnnotateUltrasound/DepthGuide', "false")
 
     def onPleuraPercentageToggled(self, toggled):
         """
@@ -926,7 +938,7 @@ class AnnotateUltrasoundWidget(ScriptedLoadableModuleWidget, VTKObservationMixin
         settings = slicer.app.settings()
         showDepthGuide = settings.value('AnnotateUltrasound/DepthGuide', 'false')
         self.ui.depthGuideCheckBox.setChecked(showDepthGuide.lower() == 'true')
-        
+
 
     def setParameterNode(self, inputParameterNode: AnnotateUltrasoundParameterNode) -> None:
         """
@@ -1265,9 +1277,10 @@ class AnnotateUltrasoundLogic(ScriptedLoadableModuleLogic, VTKObservationMixin):
             self.annotations = json.load(f)
         
         self.updateLineMarkups()
-        ratio = self.updateOverlayVolume()
-        parameterNode = self.getParameterNode()
-        parameterNode.pleuraPercentage = ratio * 100
+        # ratio = self.updateOverlayVolume()  #no need to call updateoverlay because it will be called by endModify? or later in this fcn
+        # parameterNode = self.getParameterNode()
+        # parameterNode.pleuraPercentage = ratio * 100
+        self.updatePleuraPercentage()
         
         parameterNode.EndModify(previousNodeState)
         
@@ -1288,9 +1301,11 @@ class AnnotateUltrasoundLogic(ScriptedLoadableModuleLogic, VTKObservationMixin):
         
     def onSequenceBrowserModified(self, caller, event):
         self.updateLineMarkups()
-        ratio = self.updateOverlayVolume()
-        parameterNode = self.getParameterNode()
-        parameterNode.pleuraPercentage = ratio * 100
+        # ratio = self.updateOverlayVolume()
+        # parameterNode = self.getParameterNode()
+        # parameterNode.pleuraPercentage = ratio * 100
+        self.updatePleuraPercentage()
+        self.updateOverlayVolume()
 
     def createMarkupLine(self, name, coordinates, color=[1, 1, 0]):
         markupNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsLineNode")
@@ -1335,9 +1350,11 @@ class AnnotateUltrasoundLogic(ScriptedLoadableModuleLogic, VTKObservationMixin):
             if self.hasObserver(currentLine, currentLine.PointPositionDefinedEvent, self.onPointPositionDefined):
                 self.removeObserver(currentLine, currentLine.PointPositionDefinedEvent, self.onPointPositionDefined)
             slicer.mrmlScene.RemoveNode(currentLine)
-            ratio = self.updateOverlayVolume()
-            parameterNode = self.getParameterNode()
-            parameterNode.pleuraPercentage = ratio * 100
+            # ratio = self.updateOverlayVolume()
+            # parameterNode = self.getParameterNode()
+            # parameterNode.pleuraPercentage = ratio * 100
+            self.updatePleuraPercentage()
+            self.updateOverlayVolume()
     
     def removeLastBline(self):
         """
@@ -1349,14 +1366,17 @@ class AnnotateUltrasoundLogic(ScriptedLoadableModuleLogic, VTKObservationMixin):
             if self.hasObserver(currentLine, currentLine.PointPositionDefinedEvent, self.onPointPositionDefined):
                 self.removeObserver(currentLine, currentLine.PointPositionDefinedEvent, self.onPointPositionDefined)
             slicer.mrmlScene.RemoveNode(currentLine)
+            self.updatePleuraPercentage()
             self.updateOverlayVolume()
     
     def onPointModified(self, caller, event):
-        ratio = self.updateOverlayVolume()
+        # ratio = self.updateOverlayVolume() #not sure if i need to updateOverlayVolume here
         self.addCurrentFrame()
         parameterNode = self.getParameterNode()
-        parameterNode.pleuraPercentage = ratio * 100
+        # parameterNode.pleuraPercentage = ratio * 100
+        self.updatePleuraPercentage()
         parameterNode.unsavedChanges = True
+        self.updateOverlayVolume()
     
     def onPointPositionDefined(self, caller, event):
         parameterNode = self.getParameterNode()
@@ -1365,9 +1385,11 @@ class AnnotateUltrasoundLogic(ScriptedLoadableModuleLogic, VTKObservationMixin):
             parameterNode.lineBeingPlaced = None
             self.removeObserver(caller, caller.PointPositionDefinedEvent, self.onPointPositionDefined)
         
-        ratio = self.updateOverlayVolume()
-        parameterNode = self.getParameterNode()
-        parameterNode.pleuraPercentage = ratio * 100
+        # ratio = self.updateOverlayVolume() #not sure if i need to updateOverlayVolume here
+        # parameterNode = self.getParameterNode()
+        # parameterNode.pleuraPercentage = ratio * 100
+        self.updatePleuraPercentage()
+        self.updateOverlayVolume()
     
     def fanCornersFromSectorLine(self, p1, p2, center, r1, r2):
         op1 = np.array(p1) - np.array(center)
@@ -1776,7 +1798,50 @@ class AnnotateUltrasoundLogic(ScriptedLoadableModuleLogic, VTKObservationMixin):
             return -2.0
         else:
             return greenPixels / bluePixels
-    
+        
+
+    def calculatePleuraPercentage(self):
+        """
+        Computes pleura coverage percentage based on angular overlap 
+        between pleura lines and B-lines in the ultrasound fan.
+        Ensures the max pleura percentage is 100%.
+        
+        Returns:
+            float: pleura percentage (0 to 100), or -1 if no pleura detected.
+        """
+
+        return 0.0
+
+
+    def updatePleuraPercentage(self):
+        """
+        Update the pleura percentage and store it in the parameter node.
+        """ 
+        parameterNode = self.getParameterNode()
+        pleuraPercentage = self.calculatePleuraPercentage()
+        parameterNode.pleuraPercentage = pleuraPercentage
+        self.updatePleuraAnnotationDisplay()
+
+    def updatePleuraAnnotationDisplay(self):
+        """
+        Update the corner annotation with the pleura percentage.
+        """
+        parameterNode = self.getParameterNode()
+        view = slicer.app.layoutManager().sliceWidget("Red").sliceView()
+
+        if parameterNode.pleuraPercentageVisible:
+            if parameterNode.pleuraPercentage == -1.0 or parameterNode.pleuraPercentage is None:
+                annotationText = "No pleura detected"
+            else:
+                annotationText = f"Pleura Coverage: {parameterNode.pleuraPercentage:.1f} %"
+
+            view.cornerAnnotation().SetText(vtk.vtkCornerAnnotation.UpperLeft, annotationText)
+            view.cornerAnnotation().GetTextProperty().SetColor(1, 1, 0)  # Yellow text
+            view.forceRender()
+        else:
+            view.cornerAnnotation().SetText(vtk.vtkCornerAnnotation.UpperLeft, "")
+            view.forceRender()
+
     def dicomHeaderDictForBrowserNode(self, browserNode):
         """Return DICOM header for the given browser node"""
         if browserNode is None:
