@@ -671,6 +671,9 @@ class AnnotateUltrasoundWidget(ScriptedLoadableModuleWidget, VTKObservationMixin
 
         # Restore previous sort state
         self.ui.framesTableWidget.sortItems(sort_column, sort_order)
+        
+        # Update the labels column in the rater table
+        self.updateLabelsInRaterTable()
 
     def createWaitDialog(self, title, message):
         """
@@ -1001,6 +1004,9 @@ class AnnotateUltrasoundWidget(ScriptedLoadableModuleWidget, VTKObservationMixin
             if annotationName in self.logic.annotations['labels']:
                 self.logic.annotations['labels'].remove(annotationName)
         self._parameterNode.unsavedChanges = True
+        
+        # Update the labels column in the rater table
+        self.updateLabelsInRaterTable()
 
     def onSkipToUnlabeledButton(self):
         """
@@ -1283,17 +1289,18 @@ class AnnotateUltrasoundWidget(ScriptedLoadableModuleWidget, VTKObservationMixin
         self.ui.raterColorTable.clearContents()
         colors = list(self.logic.getAllRaterColors())
         self.ui.raterColorTable.setRowCount(len(colors))
-        self.ui.raterColorTable.setColumnCount(3)
-        self.ui.raterColorTable.setHorizontalHeaderLabels(["Rater", "Pleura", "B-line"])
+        self.ui.raterColorTable.setColumnCount(4)  # Changed from 3 to 4 columns
+        self.ui.raterColorTable.setHorizontalHeaderLabels(["Rater", "Pleura", "B-line", "Labels"])  # Added "Labels" column
         header = self.ui.raterColorTable.horizontalHeader()
         header.setSectionResizeMode(0, qt.QHeaderView.Stretch)
         # Columns 1 & 2: Color indicators — just enough to show the color
         header.setSectionResizeMode(1, qt.QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(1, qt.QHeaderView.ResizeToContents)
         header.setSectionResizeMode(2, qt.QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(3, qt.QHeaderView.ResizeToContents)  # Labels column
 
         self.ui.raterColorTable.setColumnWidth(1, 30)
         self.ui.raterColorTable.setColumnWidth(2, 30)
+        self.ui.raterColorTable.setColumnWidth(3, 120)  # Labels column width
         for row, (r, (pleura_color, bline_color)) in enumerate(colors):
             rater_item = qt.QTableWidgetItem(r)
             rater_item.setFlags(qt.Qt.ItemIsUserCheckable | qt.Qt.ItemIsEnabled | qt.Qt.ItemIsSelectable)
@@ -1310,9 +1317,16 @@ class AnnotateUltrasoundWidget(ScriptedLoadableModuleWidget, VTKObservationMixin
             bline_item.setFlags(qt.Qt.ItemIsEnabled)
             bline_item.setBackground(qt.QColor(*(int(c * 255) for c in bline_color)))
 
+            # Labels item - show labels for this rater
+            labels_item = qt.QTableWidgetItem()
+            labels_item.setFlags(qt.Qt.ItemIsEnabled)
+            labels_text = self.getLabelsForRater(r)
+            labels_item.setText(labels_text)
+
             self.ui.raterColorTable.setItem(row, 0, rater_item)
             self.ui.raterColorTable.setItem(row, 1, pleura_item)
             self.ui.raterColorTable.setItem(row, 2, bline_item)
+            self.ui.raterColorTable.setItem(row, 3, labels_item)  # Added labels item
         self.ui.raterColorTable.blockSignals(False)
 
     def getSelectedRatersFromTable(self):
@@ -1367,6 +1381,53 @@ class AnnotateUltrasoundWidget(ScriptedLoadableModuleWidget, VTKObservationMixin
             current_state = item.checkState()
             item.setCheckState(qt.Qt.Unchecked if current_state == qt.Qt.Checked else qt.Qt.Checked)
         self.onRaterColorSelectionChangedFromUser()
+
+    def getLabelsForRater(self, rater):
+        """
+        Get the labels for a specific rater from the current scan's annotations.
+        Returns a formatted string of labels or empty string if no labels found.
+        """
+        if self.logic.annotations is None or "labels" not in self.logic.annotations:
+            return ""
+        
+        # For now, return all labels since they are stored globally per scan
+        # In the future, this could be enhanced to store labels per rater
+        labels = self.logic.annotations.get("labels", [])
+        if not labels:
+            return ""
+        
+        # Format labels in a compact way
+        # Convert "Category/Label" format to just "Label" for display
+        formatted_labels = []
+        for label in labels:
+            if "/" in label:
+                category, label_name = label.split("/", 1)
+                formatted_labels.append(label_name)
+            else:
+                formatted_labels.append(label)
+        
+        # Join with commas, limit to reasonable length
+        labels_text = ", ".join(formatted_labels)
+        if len(labels_text) > 50:  # Truncate if too long
+            labels_text = labels_text[:47] + "..."
+        
+        return labels_text
+
+    def updateLabelsInRaterTable(self):
+        """
+        Update the labels column in the rater table for all raters.
+        This should be called when labels change.
+        """
+        if hasattr(self.ui, 'raterColorTable'):
+            table = self.ui.raterColorTable
+            for row in range(table.rowCount):
+                rater_item = table.item(row, 0)
+                if rater_item:
+                    rater = rater_item.text()
+                    labels_item = table.item(row, 3)
+                    if labels_item:
+                        labels_text = self.getLabelsForRater(rater)
+                        labels_item.setText(labels_text)
 
 
 #
